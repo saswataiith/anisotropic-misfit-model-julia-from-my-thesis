@@ -36,3 +36,16 @@ shifted=circshift(ellipse,(5,8))
 @test_throws ErrorException particle_moments(zeros(4,4),zeros(4,4))
 println("Circle, ellipse, translation, length scaling and empty-mask utility checks passed.")
 println("Ellipse shape parameter: ",r.shape_parameter)
+
+# Known isotropic, in-plane dilatational kernel checks the elastic construction.
+isotropic = Parameters(eps_c=0.01, eps_eta=0.0, anisotropy=1.0)
+Bi = elastic_kernels(grid,isotropic)
+C = elastic_tensor(isotropic)
+lambda = C[1,1,2,2]
+shear = C[1,2,1,2]
+expected = 4shear*(lambda+shear)/(lambda+2shear)*isotropic.eps_c^2
+for i in axes(Bi,1), j in axes(Bi,2)
+    i == 1 && j == 1 && continue
+    @test isapprox(Bi[i,j,1,1],expected;rtol=1e-12)
+end
+println("Known isotropic dilatational kernel check passed.")
