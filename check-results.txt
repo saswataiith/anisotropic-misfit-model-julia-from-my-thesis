@@ -1,0 +1,5 @@
+Energy derivative, kernel positivity, finite fields and mass checks passed.
+Mean drift: 1.6653345369377348e-16
+Energy: 23.0607770679775 → 23.04009928475278
+Circle, ellipse, translation, length scaling and empty-mask utility checks passed.
+Ellipse shape parameter: 0.6062290199641605

@@ -1,0 +1,6 @@
+results*/
+dt-*/
+.DS_Store
+*.out
+binorder
+*.o
