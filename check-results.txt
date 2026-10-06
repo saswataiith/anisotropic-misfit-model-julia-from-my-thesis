@@ -1,6 +1,9 @@
 Energy derivative, kernel positivity, finite fields and mass checks passed.
-Mean drift: 1.6653345369377348e-16
-Energy: 23.0607770679775 → 23.04009928475278
+Mean drift: 2.220446049250313e-16
+Energy: 23.06045023667428 → 23.040084556008292
 Circle, ellipse, translation, length scaling and empty-mask utility checks passed.
 Ellipse shape parameter: 0.6062290199641605
 Known isotropic dilatational kernel check passed.
+Sustained noise schedule, conservation, independent variant noise, seeded repeatability, timestep switch and separate variant coefficients passed.
+Noisy run mean drift: 1.1102230246251565e-16
+Historical labelled-input run passed with its count-zero noise event.

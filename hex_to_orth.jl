@@ -9,9 +9,9 @@ Base.@kwdef struct Parameters
     A61::Float64=2.0
     A62::Float64=4.0
     kappa_c::Float64=0.001
-    kappa_eta::Float64=1.0
+    kappa_eta::NTuple{3,Float64}=(1.0,1.0,1.0)
     mobility::Float64=1.0
-    relaxation::Float64=1.0
+    relaxation::NTuple{3,Float64}=(1.0,1.0,1.0)
     eps_c::Float64=0.0
     eps_eta::Float64=0.03
     tetra::Float64=-0.93
@@ -116,7 +116,7 @@ function total_energy(c,eta,grid,B,p)
         p.A61*(q[1]^3+q[2]^3+q[3]^3) + p.A62*q[1]*q[2]*q[3]
     hats = [fft(c),(fft(e) for e in eta)...]
     gradient = sum(grid.k2 .* (p.kappa_c .* abs2.(hats[1]) .+
-        p.kappa_eta .* sum(abs2.(hats[a]) for a in 2:4)))/length(c)
+        sum(p.kappa_eta[a-1] .* abs2.(hats[a]) for a in 2:4)))/length(c)
     strain_hats = [hats[1],(fft(e) for e in q)...]
     elastic = 0.0
     for a in 1:4,b in 1:4
@@ -130,39 +130,115 @@ function step(c,eta,grid,B,p,dt)
     ec,ee = elastic_derivatives(c,eta,B)
     new_c = real.(ifft((fft(c).-dt*p.mobility.*grid.k2.*fft(dc.+ec))./
         (1 .+ 2dt*p.mobility*p.kappa_c.*grid.k2.^2)))
-    new_eta = [real.(ifft((fft(eta[a]).-dt*p.relaxation.*fft(de[a].+ee[a]))./
-        (1 .+ 2dt*p.relaxation*p.kappa_eta.*grid.k2))) for a in 1:3]
+    new_eta = [real.(ifft((fft(eta[a]).-dt*p.relaxation[a].*fft(de[a].+ee[a]))./
+        (1 .+ 2dt*p.relaxation[a]*p.kappa_eta[a].*grid.k2))) for a in 1:3]
     return new_c,new_eta
 end
 
-function initial_fields(n=32;seed=494)
-    rng = MersenneTwister(seed)
-    c = 0.3 .+ 0.001 .* randn(rng,n,n)
-    c .+= 0.3-mean(c)
-    eta = [0.001 .* randn(rng,n,n) for _ in 1:3]
+Base.@kwdef struct Noise
+    amplitude_c::Float64=0.1
+    amplitude_eta::NTuple{3,Float64}=(0.1,0.1,0.1)
+    initial_steps::Int=0
+    interval::Int=2500
+end
+
+function noise_due(count, noise)
+    return count <= noise.initial_steps || (noise.interval > 0 && count % noise.interval == 0)
+end
+
+function add_noise!(c, eta, rng, noise)
+    # I subtract the composition-noise mean to preserve total composition.
+    dc = noise.amplitude_c .* randn(rng,size(c))
+    dc .-= mean(dc)
+    c .+= dc
+    # I add independent nonconserved noise to each variant.
+    for a in 1:3
+        eta[a] .+= noise.amplitude_eta[a] .* randn(rng,size(c))
+    end
+end
+
+function initial_fields(nx=32,ny=nx;seed=494,rng=MersenneTwister(seed),
+                        composition=0.3,amplitude=0.001)
+    # I retain the original uniform composition perturbation and its zero mean.
+    dc = amplitude*composition .* (2 .* rand(rng,nx,ny) .- 1)
+    c = composition .+ mean(dc) .- dc
+    eta = [amplitude .* randn(rng,nx,ny) for _ in 1:3]
     return c,eta
 end
 
-function run_example(;n=32,steps=100,dt=0.001,directory=joinpath(@__DIR__,"results"))
-    p = Parameters()
-    grid = make_grid(n,n)
+function run_simulation(c,eta; p=Parameters(), noise=Noise(), rng=MersenneTwister(494),
+        dx=0.5,dy=0.5,steps=100,dt1=0.001,dt2=0.01,time_to_change=1000,
+        initial_count=0,initial_time=0.0,directory=joinpath(@__DIR__,"results"))
+    steps >= 0 && dt1 > 0 && dt2 > 0 || error("Use nonnegative steps and positive timesteps.")
+    size(c) == size(eta[1]) == size(eta[2]) == size(eta[3]) || error("Field sizes differ.")
+    c = copy(c); eta = [copy(e) for e in eta]
+    grid = make_grid(size(c)...;dx,dy)
     B = elastic_kernels(grid,p)
-    c,eta = initial_fields(n)
-    history = zeros(steps+1,3)
-    for s in 0:steps
-        history[s+1,:] = [s*dt,mean(c),total_energy(c,eta,grid,B,p)]
-        all(isfinite,c) && all(e -> all(isfinite,e),eta) || error("Non-finite fields.")
-        s < steps && ((c,eta)=step(c,eta,grid,B,p,dt))
+    # I record energy before and after each noise event separately.
+    history = zeros(steps+1,5)
+    time = initial_time
+    history[1,:] = [time,mean(c),total_energy(c,eta,grid,B,p),0,NaN]
+    for s in 1:steps
+        count = initial_count+s-1
+        dt = count > time_to_change ? dt2 : dt1
+        c,eta = step(c,eta,grid,B,p,dt)
+        energy_before_noise = total_energy(c,eta,grid,B,p)
+        event = noise_due(count,noise)
+        event && add_noise!(c,eta,rng,noise)
+        time += dt
+        all(isfinite,c) && all(e -> all(isfinite,e),eta) || error("Non-finite fields at step $s.")
+        history[s+1,:] = [time,mean(c),total_energy(c,eta,grid,B,p),Int(event),energy_before_noise]
     end
-    mkpath(directory)
-    writedlm(joinpath(directory,"history.csv"),history,',')
-    writedlm(joinpath(directory,"composition.csv"),c,',')
-    for a in 1:3
-        writedlm(joinpath(directory,"variant-$a.csv"),eta[a],',')
+    if directory !== nothing
+        mkpath(directory)
+        writedlm(joinpath(directory,"history.csv"),history,',')
+        writedlm(joinpath(directory,"composition.csv"),c,',')
+        for a in 1:3
+            writedlm(joinpath(directory,"variant-$a.csv"),eta[a],',')
+        end
     end
     return c,eta,history
 end
 
+function run_example(;n=32,steps=100,dt=0.001,noise=Noise(),
+        directory=joinpath(@__DIR__,"results"))
+    # I keep one seeded generator for initialization and subsequent noise.
+    rng = MersenneTwister(494)
+    c,eta = initial_fields(n;rng)
+    return run_simulation(c,eta;noise,rng,steps,dt1=dt,dt2=dt,directory)
+end
+
 if abspath(PROGRAM_FILE) == @__FILE__
     run_example()
+end
+
+# I read the original labelled parameter file, including repeated noise labels.
+function run_from_input(path;directory=joinpath(@__DIR__,"results-input"))
+    values = Dict{String,Float64}()
+    variant_noise = Float64[]
+    for line in eachline(path)
+        words = split(line)
+        length(words) < 2 && continue
+        number = tryparse(Float64,words[2])
+        number === nothing && continue
+        values[words[1]] = number
+        startswith(words[1],"sustained_noise_level_uncons") && push!(variant_noise,number)
+    end
+    length(variant_noise) == 3 || error("Specify all three variant noise amplitudes.")
+    get(values,"flag",0) == 0 || error("For this initialization branch, load the original fields and call run_simulation directly.")
+    get(values,"initcount",0) == 0 || error("For a restart, load the saved fields and supply initial_count and initial_time.")
+    p = Parameters(A1=values["A1"],A2=values["A2"],A41=values["A41"],A42=values["A42"],
+        A61=values["A61"],A62=values["A62"],kappa_c=values["kappa"],
+        kappa_eta=Tuple(values["kappa$a"] for a in 1:3),mobility=values["mobility"],
+        relaxation=Tuple(values["L$a"] for a in 1:3),eps_c=values["epsc"],
+        eps_eta=values["eps_eta"],tetra=values["tetra"],mu=values["mubar"],
+        nu=values["nubar"],anisotropy=values["Aniso"])
+    noise = Noise(amplitude_c=values["sustained_noise_level_cons"],
+        amplitude_eta=Tuple(variant_noise),initial_steps=Int(values["noise_steps"]))
+    rng = MersenneTwister(abs(Int(values["SEED"])))
+    c,eta = initial_fields(Int(values["nx"]),Int(values["ny"]);rng,
+        composition=values["alloycomp"],amplitude=values["noise_level"])
+    return run_simulation(c,eta;p,noise,rng,dx=values["del_x"],dy=values["del_y"],
+        steps=Int(values["num_steps"]),dt1=values["del_t1"],dt2=values["del_t2"],
+        time_to_change=Int(values["time_to_change"]),directory)
 end
