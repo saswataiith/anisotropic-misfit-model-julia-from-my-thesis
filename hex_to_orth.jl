@@ -1,5 +1,5 @@
-# My hexagonal-to-orthorhombic model. Equations follow evolve12.c.
-# Composition is conserved; three variant fields follow Allen–Cahn equations.
+# I use the equations from evolve12.c for my hexagonal-to-orthorhombic model.
+# I conserve composition and evolve the three variants using Allen–Cahn equations.
 using FFTW, LinearAlgebra, Random, Statistics, DelimitedFiles
 Base.@kwdef struct Parameters
     A1::Float64=2.0
@@ -66,7 +66,7 @@ function elastic_kernels(grid,p)
     direct = [sum(strains[a].*stress[b]) for a in 1:4,b in 1:4]
     B = zeros(length(grid.kx),length(grid.ky),4,4)
     for i in eachindex(grid.kx),j in eachindex(grid.ky)
-        i == 1 && j == 1 && continue # Relaxed mean strain; zero k=0 energy.
+        i == 1 && j == 1 && continue # I allow the mean strain to relax, so I omit the zero-mode energy.
         n = [grid.kx[i],grid.ky[j],0.0]
         n ./= norm(n)
         acoustic = [sum(C[r,s,t,u]*n[s]*n[t] for s in 1:3,t in 1:3)
@@ -76,7 +76,7 @@ function elastic_kernels(grid,p)
             B[i,j,a,b] = direct[a,b]-dot(traction[a],acoustic\traction[b])
         end
     end
-    # Even-grid Nyquist lines require conjugate symmetry for real fields.
+    # I enforce conjugate symmetry on the Nyquist lines to obtain real fields.
     for a in 1:4,b in 1:4
         field = copy(B[:,:,a,b])
         for i in axes(field,1),j in axes(field,2)

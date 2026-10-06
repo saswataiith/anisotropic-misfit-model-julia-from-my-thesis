@@ -37,7 +37,7 @@ shifted=circshift(ellipse,(5,8))
 println("Circle, ellipse, translation, length scaling and empty-mask utility checks passed.")
 println("Ellipse shape parameter: ",r.shape_parameter)
 
-# Known isotropic, in-plane dilatational kernel checks the elastic construction.
+# I check the elastic calculation against the known isotropic dilatational kernel.
 isotropic = Parameters(eps_c=0.01, eps_eta=0.0, anisotropy=1.0)
 Bi = elastic_kernels(grid,isotropic)
 C = elastic_tensor(isotropic)

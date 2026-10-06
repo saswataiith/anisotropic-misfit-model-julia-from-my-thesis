@@ -1,7 +1,7 @@
 using LinearAlgebra
 
-# Rows follow x; columns follow y. Select one isolated particle.
-# Shift a periodic boundary-crossing particle into the box before using this routine.
+# I store x along rows and y along columns, and measure one isolated particle.
+# I first shift a boundary-crossing particle into the box before measuring it.
 function particle_moments(c, eta; dx=1.0, dy=1.0, threshold=0.5)
     size(c) == size(eta) || error("Field sizes differ.")
     dx > 0 && dy > 0 || error("Grid spacing must be positive.")
@@ -27,7 +27,7 @@ function particle_moments(c, eta; dx=1.0, dy=1.0, threshold=0.5)
         principal_moments=principal.values, shape_parameter, long_axis_angle_degrees=angle)
 end
 
-# Original solver: interleaved real/imaginary doubles, with y changing fastest.
+# I read the original interleaved real and imaginary doubles, with y changing fastest.
 function read_c_field(path,nx,ny)
     values = reinterpret(Float64,read(path))
     length(values) == 2nx*ny || error("File size does not match nx and ny.")
