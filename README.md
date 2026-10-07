@@ -119,3 +119,7 @@ These are functional and equation-consistency checks. I have not reproduced a pu
 ## Development of the auxiliary-variable models
 
 [Read my model history](MODEL-HISTORY.md), including cA in my PRL ternary model, phi for boundary conditions in my PCCP model, and the free-energy interpolation explored in Sandeep's thesis, Chapter 3 Eq. (3.77) and Chapter 6 Section 6.1.
+
+## Using my code
+
+My original source is available under MIT. See [licence scope and dependency terms](LICENSING.md) and the [licence](LICENSE).
